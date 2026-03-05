@@ -6,19 +6,22 @@ from app.core.config import settings
 client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
 SYSTEM_RERANK = """
-You are ranking FAQ entries for relevance to the user's question.
+You are selecting knowledge base documents to answer a user's question about Bashundhara Sports City (BSC).
 
 Return ONLY a valid JSON object (no markdown, no code fences) in this schema:
 {
-  "selected_ids": ["Q2", "Q17"],
+  "selected_ids": ["BSCBOT_DOC_3_CH_1", "BSCBOT_DOC_7_CH_2"],
   "reason": "short reason"
 }
 
 Rules:
-- Select the most relevant FAQ IDs (max N).
-- Prefer direct answers over tangential matches.
-- If none are truly relevant, return {"selected_ids": [], "reason": "..."}.
-- IDs must be exactly as provided in candidates (e.g., "Q2").
+- Each candidate has: id, category (page section), and snippet (preview of actual content).
+- Be INCLUSIVE: select every document whose snippet is relevant OR partially relevant to the query topic.
+- ALWAYS prefer to include more documents (2–4) over fewer. More context = better answers.
+- Include a document if its snippet covers the same topic area (e.g., membership pricing, facility details, academy info, contact/location) even if it is not a perfect word-for-word match.
+- The detailed content pages (pages.membership, pages.facilities, pages.academies) are more valuable than SEO or home page summaries — prefer them when present.
+- Only return empty selected_ids if ALL candidates are completely unrelated to BSC or the user's topic (e.g., user asks about unrelated topics).
+- IDs must be exactly as provided in candidates.
 """.strip()
 
 def _strip_json_fences(text: str) -> str:
@@ -32,11 +35,11 @@ def rerank(user_query: str, matches: list, top_n: int):
     candidates = []
     for m in matches:
         md = m["metadata"] if isinstance(m, dict) else m.metadata
+        raw_text = md.get("text") or md.get("answer") or md.get("question") or ""
         candidates.append({
-            "id": md.get("id"),  # MUST exist (ensure ingestion stores it)
-            "question": md.get("question", ""),
+            "id": md.get("id"),
             "category": md.get("category", ""),
-            "keywords": md.get("keywords", []),
+            "snippet": raw_text[:400],
         })
 
     payload = {

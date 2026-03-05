@@ -4,7 +4,7 @@ from app.core.config import settings
 from app.services.query_rewrite_service import rewrite_for_retrieval
 from app.services.memory_store_redis import get_history
 
-FAQ_NAMESPACE = "faq_v2"
+FAQ_NAMESPACE = settings.FAQ_NAMESPACE
 
 def retrieve_candidates(user_query: str, session_id: str | None = None):
     history = get_history(session_id) if session_id else []

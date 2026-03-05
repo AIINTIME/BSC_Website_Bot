@@ -9,7 +9,7 @@ redis_client = Redis.from_url(
 )
 
 def _key(session_id: str) -> str:
-    return f"hitbot:session:{session_id}:history"
+    return f"{settings.REDIS_KEY_PREFIX}:session:{session_id}:history"
 
 def get_history(session_id: str) -> list[dict]:
     if not session_id:

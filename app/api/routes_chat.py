@@ -1,54 +1,23 @@
-# from fastapi import APIRouter
-# from pydantic import BaseModel
-# from app.services.retrieval_service import retrieve_relevant_faqs
-# from app.services.rag_service import generate_answer
-
-# router = APIRouter()
-
-# class ChatRequest(BaseModel):
-#     message: str
-
-# class ChatResponse(BaseModel):
-#     answer: str
-#     confidence: float
-
-# @router.post("/chat", response_model=ChatResponse)
-# def chat(request: ChatRequest):
-#     matches, score = retrieve_relevant_faqs(request.message)
-
-#     if not matches:
-#         return ChatResponse(
-#             answer="I do not have that information in the official FAQs. Please contact the admissions office.",
-#             confidence=score
-#         )
-
-#     answer = generate_answer(request.message, matches)
-#     print("\n[GENERATION DEBUG]")
-#     print("Query:", request.message)
-#     print("Answer:", answer)
-#     print("Confidence:", score)
-#     return ChatResponse(
-#         answer=answer,
-#         confidence=score
-#     )
-
-# Rewrite
-from fastapi import APIRouter
-from pydantic import BaseModel
-from typing import Optional
+from fastapi import APIRouter, HTTPException
+from app.models.chat_models import ChatRequest, ChatResponse
 from app.services.rag_pipeline import run_rag
-from app.services.memory_store_redis import append_turn
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 
-class ChatRequest(BaseModel):
-    message: str
-    session_id: Optional[str] = None
 
-@router.post("/chat")
+@router.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
-    result = run_rag(req.message, session_id=req.session_id)
-    # append_turn(req.session_id or "", req.message, result["answer"])
-    return result
-
-
+    """
+    Main chat endpoint.
+    Accepts a user message and optional session_id for conversational memory.
+    Memory is persisted in Redis via run_rag() → append_turn().
+    """
+    try:
+        result = run_rag(req.message, session_id=req.session_id)
+        return result
+    except Exception as e:
+        logger.error("Chat endpoint error: %s", str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")

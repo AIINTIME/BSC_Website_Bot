@@ -1,8 +1,17 @@
-fastapi
-uvicorn
-pydantic
-python-dotenv
-openai
-pinecone
-tiktoken
-redis
+# BSC Website Bot — Python dependencies
+# Pin versions for reproducible builds
+
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+python-dotenv==1.0.1
+
+# OpenAI SDK
+openai==1.58.1
+tiktoken==0.8.0
+
+# Vector database
+pinecone==5.4.2
+
+# Redis session memory (Upstash-compatible)
+redis==5.2.1

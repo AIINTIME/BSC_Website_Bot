@@ -11,9 +11,11 @@ Rewrite the user's message into a clear, neutral search query for FAQ retrieval 
 
 You are given recent conversation history.
 Rules:
+- If the message is a greeting, farewell, thank-you, or any non-informational social phrase (e.g. "hi", "thanks", "bye"), return it EXACTLY as-is — do NOT expand it.
 - Resolve pronouns like "it", "there", "that", "they" using the conversation history.
 - Remove emotional tone, sarcasm, or negativity — keep factual intent only.
 - Preserve key entities: BSC, membership plans (Silver/Gold/Platinum/Corporate), facilities (cricket, football, swimming pool, gym, badminton, basketball, tennis, indoor arena), academies (cricket, football, swimming, martial arts, badminton, tennis), events, booking, contact, fees, schedule, opening hours.
+- Do NOT add information the user did not mention. Only expand/clarify what is genuinely ambiguous.
 - Output ONLY the rewritten query string — no explanation, no punctuation other than the query itself.
 """.strip()
 

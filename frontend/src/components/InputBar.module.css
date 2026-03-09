@@ -1,0 +1,104 @@
+/* ── Input bar ───────────────────────────────────────────────────────────── */
+.bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  background: var(--surface);
+  border-top: 1px solid var(--divider);
+}
+
+/* ── Attach button ───────────────────────────────────────────────────────── */
+.attachBtn {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bg);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  margin-bottom: 1px;
+}
+.attachBtn:hover { background: #E5E7EB; }
+.attachBtn:focus-visible {
+  outline: 2px solid var(--bsc-red);
+  outline-offset: 2px;
+}
+
+/* ── Textarea wrapper ────────────────────────────────────────────────────── */
+.inputWrap {
+  flex: 1;
+  background: var(--bg);
+  border-radius: var(--r-md);
+  border: 1.5px solid var(--border);
+  display: flex;
+  align-items: flex-end;
+  padding: 8px 12px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  min-height: 40px;
+}
+.inputWrap:focus-within {
+  border-color: var(--bsc-red);
+  box-shadow: 0 0 0 3px rgba(227,30,36,.10);
+}
+
+/* ── Textarea ────────────────────────────────────────────────────────────── */
+.textarea {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 14px;
+  font-family: var(--font);
+  color: var(--text);
+  resize: none;
+  max-height: 96px;
+  line-height: 1.5;
+  padding: 0;
+}
+.textarea::placeholder { color: var(--text-muted); }
+.textarea:disabled     { cursor: not-allowed; opacity: 0.55; }
+
+/* ── Send button ─────────────────────────────────────────────────────────── */
+.sendBtn {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bsc-red);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-bottom: 1px;
+  transition: background 0.15s, transform 0.1s;
+  box-shadow: 0 2px 10px rgba(227,30,36,.35);
+}
+.sendBtn:hover:not(:disabled)  { background: var(--bsc-red-mid); }
+.sendBtn:active:not(:disabled) { transform: scale(0.92); }
+.sendBtn:disabled {
+  background: #FCA5A5;
+  cursor: default;
+  box-shadow: none;
+}
+.sendBtn:focus-visible {
+  outline: 2px solid var(--bsc-red);
+  outline-offset: 3px;
+}
+
+/* ── Footer note ─────────────────────────────────────────────────────────── */
+.footerNote {
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 0 12px 8px;
+  background: var(--surface);
+  letter-spacing: 0.2px;
+}

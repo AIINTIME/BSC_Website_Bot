@@ -1,5 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 from app.api.routes_chat import router as chat_router
 from app.api.routes_admin import router as admin_router
 from app.core.config import settings
@@ -54,6 +57,24 @@ async def startup_checks():
 
 
 # ── Health check ──────────────────────────────────────────────────────────────
-@app.get("/", tags=["Health"])
+@app.get("/health", tags=["Health"])
 def health():
     return {"status": "BSC Website Bot Running", "version": "1.0.0"}
+
+
+# ── Frontend (serves React/Vite build from frontend/dist/) ─────────────────────
+_DIST_DIR = Path(__file__).parent.parent / "frontend" / "dist"
+
+if _DIST_DIR.exists():
+    _assets_dir = _DIST_DIR / "assets"
+    if _assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="assets")
+
+@app.get("/", include_in_schema=False)
+@app.get("/{full_path:path}", include_in_schema=False)
+def serve_frontend(full_path: str = ""):  # noqa: ARG001
+    """Serve React SPA — all non-API routes return index.html."""
+    index = _DIST_DIR / "index.html"
+    if index.exists():
+        return FileResponse(str(index))
+    return {"message": "Frontend not built. Run: cd frontend && npm install && npm run build"}

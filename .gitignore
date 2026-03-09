@@ -26,3 +26,11 @@ Thumbs.db
 
 # Data
 data/
+
+# Frontend
+frontend/node_modules/
+
+# Railway
+.railway/
+
+

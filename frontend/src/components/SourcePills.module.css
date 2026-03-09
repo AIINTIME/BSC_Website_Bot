@@ -1,0 +1,39 @@
+.sources {
+  margin-top: 11px;
+  padding-top: 11px;
+  border-top: 1px solid var(--divider);
+}
+
+.sourcesLabel {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 7px;
+}
+
+.pills {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bsc-red-pill);
+  border: 1px solid rgba(227,30,36,.12);
+  border-radius: var(--r-pill);
+  padding: 4px 10px 4px 7px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-sub);
+  max-width: fit-content;
+  transition: background 0.12s;
+}
+.pill:hover { background: #FECDD3; }

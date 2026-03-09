@@ -15,3 +15,6 @@ pinecone==5.4.2
 
 # Redis session memory (Upstash-compatible)
 redis==5.2.1
+
+# Static file serving (required for FileResponse + StaticFiles)
+aiofiles==24.1.0

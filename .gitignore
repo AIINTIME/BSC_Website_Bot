@@ -33,4 +33,9 @@ frontend/node_modules/
 # Railway
 .railway/
 
+# Google Credentials
+bsc-website-bot-aaef9f495874.json
+
+# Frontend
+frontend/dist/
 

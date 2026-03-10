@@ -6,6 +6,7 @@ from fastapi.responses import StreamingResponse
 from app.models.chat_models import ChatRequest, ChatResponse
 from app.services.rag_pipeline import run_rag
 from app.core.logging import get_logger
+from app.services.contact_flow import get_contact_state, start_contact_flow, handle_contact_step
 
 logger = get_logger(__name__)
 
@@ -84,6 +85,29 @@ async def chat_stream(req: ChatRequest):
     async def generate():
         try:
             q = req.message.strip()
+
+            # ── Contact flow intercept ────────────────────────────────────────
+            if req.session_id:
+                state = await asyncio.to_thread(get_contact_state, req.session_id)
+
+                # Mid-flow: route to contact step handler
+                if state not in (None, "idle", "done"):
+                    text = await asyncio.to_thread(handle_contact_step, req.session_id, q)
+                    await asyncio.to_thread(_save_turn, req.session_id, q, text)
+                    # Tell frontend when the form is fully submitted so it can dismiss the welcome card
+                    new_state = await asyncio.to_thread(get_contact_state, req.session_id)
+                    contact_done = new_state == "done"
+                    yield f"data: {json.dumps({'token': text})}\n\n"
+                    yield f"data: {json.dumps({'done': True, 'sources': [], 'contact_done': contact_done})}\n\n"
+                    return
+
+                # New session: start contact flow before answering any question
+                if state is None:
+                    text = await asyncio.to_thread(start_contact_flow, req.session_id)
+                    await asyncio.to_thread(_save_turn, req.session_id, q, text)
+                    yield f"data: {json.dumps({'token': text})}\n\n"
+                    yield f"data: {json.dumps({'done': True, 'sources': []})}\n\n"
+                    return
 
             # ── Instant responses for greetings / thanks / bye ───────────────
             intent = _detect_static(q)

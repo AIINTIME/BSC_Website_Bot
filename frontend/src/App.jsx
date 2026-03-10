@@ -5,13 +5,8 @@ import TypingIndicator from './components/TypingIndicator'
 import InputBar from './components/InputBar'
 import styles from './App.module.css'
 
-// ── Session ───────────────────────────────────────────────────────────────────
-function getSessionId() {
-  let id = sessionStorage.getItem('bsc_session_id')
-  if (!id) { id = uuidv4(); sessionStorage.setItem('bsc_session_id', id) }
-  return id
-}
-const SESSION_ID = getSessionId()
+// ── Session — fresh UUID per page load ────────────────────────────────────────
+const SESSION_ID = uuidv4()
 
 // ── SSE reader ────────────────────────────────────────────────────────────────
 async function* readSSE(response) {
@@ -81,9 +76,9 @@ const SUGGESTION_CHIPS = [
   'Membership plans', 'Swimming pool', 'Cricket academy', 'Opening hours',
 ]
 
-function WelcomeScreen({ onChip }) {
+function WelcomeScreen({ onChip, exiting }) {
   return (
-    <div className={styles.welcome}>
+    <div className={`${styles.welcome} ${exiting ? styles.welcomeExit : ''}`}>
       <div className={styles.welcomeBadge}>
         <BotSVG size={30} color="var(--bsc-red)" />
       </div>
@@ -104,12 +99,21 @@ function WelcomeScreen({ onChip }) {
 
 // ── App ───────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [isOpen,    setIsOpen]    = useState(false)
-  const [messages,  setMessages]  = useState([])
-  const [isTyping,  setIsTyping]  = useState(false)
-  const [isLocked,  setIsLocked]  = useState(false)
-  const [unread,    setUnread]    = useState(0)
-  const bottomRef = useRef(null)
+  const [isOpen,        setIsOpen]        = useState(false)
+  const [messages,      setMessages]      = useState([])
+  const [isTyping,      setIsTyping]      = useState(false)
+  const [isLocked,      setIsLocked]      = useState(false)
+  const [unread,        setUnread]        = useState(0)
+  const [welcomeGone,   setWelcomeGone]   = useState(false)
+  const [welcomeExit,   setWelcomeExit]   = useState(false)
+  const bottomRef  = useRef(null)
+  const hasGreeted = useRef(false)
+
+  // Dismiss welcome card with flip animation
+  const dismissWelcome = useCallback(() => {
+    setWelcomeExit(true)
+    setTimeout(() => setWelcomeGone(true), 450)
+  }, [])
 
   // Scroll to bottom whenever messages or typing change
   useEffect(() => {
@@ -118,6 +122,13 @@ export default function App() {
 
   // Clear badge when opened
   useEffect(() => { if (isOpen) setUnread(0) }, [isOpen])
+
+  // Proactive greeting — fire once when widget first opens
+  useEffect(() => {
+    if (!isOpen || hasGreeted.current) return
+    hasGreeted.current = true
+    triggerWelcome()
+  }, [isOpen]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Streaming helpers ──────────────────────────────────────────────────────
   const appendToken = useCallback((token) => {
@@ -140,6 +151,32 @@ export default function App() {
     })
     if (!isOpen) setUnread(n => n + 1)
   }, [isOpen])
+
+  // ── Silent probe — fires on open, no user bubble shown ───────────────────
+  const triggerWelcome = useCallback(async () => {
+    setIsTyping(true)
+    setIsLocked(true)
+    try {
+      const res = await fetch('/api/chat/stream', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ message: '__init__', session_id: SESSION_ID }),
+      })
+      if (!res.ok || !res.body) return
+      setIsTyping(false)
+      setMessages(prev => [...prev, { role: 'ai', text: '', streaming: true, sources: [] }])
+      for await (const event of readSSE(res)) {
+        if (event.token)         appendToken(event.token)
+        if (event.done === true) {
+          finaliseMsg(event.sources)
+          if (event.contact_done) dismissWelcome()
+        }
+      }
+    } catch { /* ignore network errors on open */ } finally {
+      setIsTyping(false)
+      setIsLocked(false)
+    }
+  }, [appendToken, finaliseMsg, dismissWelcome])
 
   // ── Send ───────────────────────────────────────────────────────────────────
   const sendMessage = useCallback(async (text) => {
@@ -179,7 +216,10 @@ export default function App() {
           break
         }
         if (event.token)         appendToken(event.token)
-        if (event.done === true) finaliseMsg(event.sources)
+        if (event.done === true) {
+          finaliseMsg(event.sources)
+          if (event.contact_done) dismissWelcome()
+        }
       }
     } catch {
       setIsTyping(false)
@@ -194,7 +234,7 @@ export default function App() {
     } finally {
       setIsLocked(false)
     }
-  }, [isLocked, appendToken, finaliseMsg])
+  }, [isLocked, appendToken, finaliseMsg, dismissWelcome])
 
   return (
     <>
@@ -236,7 +276,8 @@ export default function App() {
 
         {/* Messages */}
         <main className={styles.messages} aria-live="polite" aria-relevant="additions">
-          {messages.length === 0 && <WelcomeScreen onChip={sendMessage} />}
+          {/* Welcome card: visible until contact form is done, then flips away */}
+          {!welcomeGone && <WelcomeScreen onChip={sendMessage} exiting={welcomeExit} />}
           {messages.map((msg, i) => <ChatMessage key={i} message={msg} />)}
           {isTyping && <TypingIndicator />}
           <div ref={bottomRef} />

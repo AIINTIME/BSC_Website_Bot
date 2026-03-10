@@ -48,6 +48,54 @@ def admin_health():
     return health
 
 
+@router.get("/test-sheets")
+def test_sheets():
+    """Quick Google Sheets connectivity test — no auth required."""
+    result = {"step": "", "error": None, "ok": False}
+    try:
+        import json
+        from googleapiclient.discovery import build
+        from google.oauth2 import service_account
+        result["step"] = "import_ok"
+
+        if settings.GOOGLE_SERVICE_ACCOUNT_FILE:
+            creds = service_account.Credentials.from_service_account_file(
+                settings.GOOGLE_SERVICE_ACCOUNT_FILE,
+                scopes=["https://www.googleapis.com/auth/spreadsheets",
+                        "https://www.googleapis.com/auth/drive"],
+            )
+            import json as _json
+            with open(settings.GOOGLE_SERVICE_ACCOUNT_FILE) as f:
+                result["service_account"] = _json.load(f).get("client_email", "unknown")
+        else:
+            info = json.loads(settings.GOOGLE_SERVICE_ACCOUNT_JSON)
+            result["service_account"] = info.get("client_email", "unknown")
+            creds = service_account.Credentials.from_service_account_info(
+                info,
+                scopes=["https://www.googleapis.com/auth/spreadsheets",
+                        "https://www.googleapis.com/auth/drive"],
+            )
+        svc = build("sheets", "v4", credentials=creds, cache_discovery=False)
+        result["step"] = "service_built"
+
+        meta = svc.spreadsheets().get(spreadsheetId=settings.GOOGLE_SPREADSHEET_ID).execute()
+        result["spreadsheet"] = meta["properties"]["title"]
+        result["step"] = "spreadsheet_read"
+
+        svc.spreadsheets().values().append(
+            spreadsheetId=settings.GOOGLE_SPREADSHEET_ID,
+            range="Contacts_1!A1",
+            valueInputOption="RAW",
+            insertDataOption="INSERT_ROWS",
+            body={"values": [["TEST_ROW", "test@bsc.com", "01700000000", "Dhaka", "admin-test"]]},
+        ).execute()
+        result["step"] = "row_written"
+        result["ok"] = True
+    except Exception as e:
+        result["error"] = f"{type(e).__name__}: {e}"
+    return result
+
+
 @router.get("/index-stats", dependencies=[Depends(verify_api_key)])
 def admin_index_stats():
     """

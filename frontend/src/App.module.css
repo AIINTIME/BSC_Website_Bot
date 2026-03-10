@@ -270,3 +270,4 @@
   .header  { border-radius: 0; }
   .launcher { bottom: 16px; right: 16px; }
 }
+.welcomeExit{animation:welcomeFlip .45s cubic-bezier(.4,0,.6,1) forwards;pointer-events:none;transform-origin:top center;overflow:hidden;}@keyframes welcomeFlip{0%{transform:perspective(600px) rotateX(0deg) scaleY(1);opacity:1;}50%{transform:perspective(600px) rotateX(-55deg) scaleY(.5);opacity:.3;}100%{transform:perspective(600px) rotateX(-90deg) scaleY(0);opacity:0;max-height:0;padding:0;margin:0;}}

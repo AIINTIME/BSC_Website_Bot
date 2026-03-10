@@ -30,6 +30,13 @@ class Settings:
     REDIS_MAX_MESSAGES: int = int(os.getenv("REDIS_MAX_MESSAGES", 10))
     REDIS_KEY_PREFIX: str = os.getenv("REDIS_KEY_PREFIX", "bscbot")
 
+    # Google Sheets contact collection
+    # Prefer file path over inline JSON (inline JSON can get corrupted during copy-paste)
+    GOOGLE_SERVICE_ACCOUNT_FILE: str = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "")
+    GOOGLE_SERVICE_ACCOUNT_JSON: str = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "")
+    GOOGLE_SPREADSHEET_ID: str = os.getenv("GOOGLE_SPREADSHEET_ID", "")
+    SHEETS_MAX_ROWS: int = int(os.getenv("SHEETS_MAX_ROWS", 9000))
+
     # Security (optional — leave unset for open dev access)
     BOT_API_KEY: str | None = os.getenv("BOT_API_KEY") or None
 

@@ -5,6 +5,9 @@ from app.services.retrieval_service import retrieve_candidates
 from app.services.rerank_service import rerank
 from app.services.rag_service import generate_answer
 from app.services.memory_store_redis import append_turn
+from app.services.contact_flow import (
+    get_contact_state, start_contact_flow, handle_contact_step
+)
 
 def _get_md(m):
     return m["metadata"] if isinstance(m, dict) else m.metadata
@@ -63,6 +66,34 @@ def _detect_intent(query: str) -> str | None:
 
 
 def run_rag(user_query: str, session_id: str | None = None):
+    # ── Contact flow intercept ───────────────────────────────────────────────
+    if session_id:
+        state = get_contact_state(session_id)
+
+        # Block 1: mid-flow — route directly to contact step handler
+        if state not in (None, "idle", "done"):
+            response_text = handle_contact_step(session_id, user_query)
+            append_turn(session_id, user_query, response_text)
+            return {
+                "answer": response_text,
+                "confidence": 1.0,
+                "rewritten_query": user_query,
+                "sources": [],
+                "rerank_reason": "contact_flow",
+            }
+
+        # Block 2: new session — start contact flow before answering any question
+        if state is None:
+            response_text = start_contact_flow(session_id)
+            append_turn(session_id, user_query, response_text)
+            return {
+                "answer": response_text,
+                "confidence": 1.0,
+                "rewritten_query": user_query,
+                "sources": [],
+                "rerank_reason": "contact_flow_start",
+            }
+
     # ── Short-circuit for greetings / thanks / bye ───────────────────────────
     intent = _detect_intent(user_query)
     if intent == "greeting":

@@ -3,6 +3,7 @@ import json
 import re
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from app.models.chat_models import ChatRequest, ChatResponse
 from app.services.rag_pipeline import run_rag
 from app.core.logging import get_logger
@@ -11,6 +12,11 @@ from app.services.contact_flow import get_contact_state, start_contact_flow, han
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+
+class ResetSessionRequest(BaseModel):
+    session_id: str
+    to_state: str = "name"
 
 # ── Short-circuit patterns (mirrored from rag_pipeline) ───────────────────────
 _GREETING_RE = re.compile(
@@ -92,21 +98,21 @@ async def chat_stream(req: ChatRequest):
 
                 # Mid-flow: route to contact step handler
                 if state not in (None, "idle", "done"):
-                    text = await asyncio.to_thread(handle_contact_step, req.session_id, q)
+                    text, quick_replies = await asyncio.to_thread(handle_contact_step, req.session_id, q)
                     await asyncio.to_thread(_save_turn, req.session_id, q, text)
                     # Tell frontend when the form is fully submitted so it can dismiss the welcome card
                     new_state = await asyncio.to_thread(get_contact_state, req.session_id)
                     contact_done = new_state == "done"
                     yield f"data: {json.dumps({'token': text})}\n\n"
-                    yield f"data: {json.dumps({'done': True, 'sources': [], 'contact_done': contact_done})}\n\n"
+                    yield f"data: {json.dumps({'done': True, 'sources': [], 'contact_done': contact_done, 'quick_replies': quick_replies, 'contact_state': state})}\n\n"
                     return
 
                 # New session: start contact flow before answering any question
                 if state is None:
-                    text = await asyncio.to_thread(start_contact_flow, req.session_id)
+                    text, quick_replies = await asyncio.to_thread(start_contact_flow, req.session_id)
                     await asyncio.to_thread(_save_turn, req.session_id, q, text)
                     yield f"data: {json.dumps({'token': text})}\n\n"
-                    yield f"data: {json.dumps({'done': True, 'sources': []})}\n\n"
+                    yield f"data: {json.dumps({'done': True, 'sources': [], 'quick_replies': quick_replies})}\n\n"
                     return
 
             # ── Instant responses for greetings / thanks / bye ───────────────
@@ -143,6 +149,11 @@ async def chat_stream(req: ChatRequest):
                 full_answer += token
                 yield f"data: {json.dumps({'token': token})}\n\n"
 
+            # ── Append contact footer based on query intent ───────────────────
+            footer = _contact_footer(q)
+            yield f"data: {json.dumps({'token': footer})}\n\n"
+            full_answer += footer
+
             yield f"data: {json.dumps({'done': True, 'sources': sources})}\n\n"
 
             # ── Persist conversation turn ─────────────────────────────────────
@@ -164,6 +175,51 @@ async def chat_stream(req: ChatRequest):
     )
 
 
+# ── Contact footer ───────────────────────────────────────────────────────────
+
+_MEMBERSHIP_KW = {
+    "membership", "member", "enroll", "enrolment", "join", "subscribe",
+    "subscription", "fee", "fees", "package", "packages", "register",
+    "registration", "monthly", "annual", "yearly", "plan", "plans",
+    "pricing", "price", "cost", "gold", "silver", "platinum",
+}
+
+_EVENTS_KW = {
+    "event", "events", "tournament", "competition", "match", "game",
+    "booking", "book", "reserve", "reservation", "schedule", "fixture",
+    "ceremony", "conference", "seminar",
+}
+
+_ADDRESS = "BSC, Plot 16, Block-C, Bashundhara R/A, Dhaka-1229"
+
+_CONTACTS = {
+    "membership": (
+        "\n\n---\n**📞 Need help?** "
+        "✉️ membership@bashundharasportscity.com.bd  \n"
+        f"📍 {_ADDRESS}"
+    ),
+    "events": (
+        "\n\n---\n**📞 Need help?** "
+        "✉️ events@bashundharasportscity.com.bd  \n"
+        f"📍 {_ADDRESS}"
+    ),
+    "general": (
+        "\n\n---\n**📞 Need help?** "
+        "✉️ info@bashundharasportscity.com.bd  \n"
+        f"📍 {_ADDRESS}"
+    ),
+}
+
+
+def _contact_footer(query: str) -> str:
+    words = set(query.lower().split())
+    if words & _MEMBERSHIP_KW:
+        return _CONTACTS["membership"]
+    if words & _EVENTS_KW:
+        return _CONTACTS["events"]
+    return _CONTACTS["general"]
+
+
 # ── Sync helpers (called via asyncio.to_thread) ────────────────────────────────
 def _retrieve(message: str, session_id: str | None):
     from app.services.retrieval_service import retrieve_candidates
@@ -173,3 +229,12 @@ def _retrieve(message: str, session_id: str | None):
 def _save_turn(session_id: str, user_msg: str, bot_msg: str):
     from app.services.memory_store_redis import append_turn
     append_turn(session_id, user_msg, bot_msg)
+
+
+# ── Session reset (used by edit-message feature) ──────────────────────────────
+@router.post("/chat/reset-session")
+async def reset_session(req: ResetSessionRequest):
+    """Reset the contact-flow state to a specific step so an edited message is re-processed correctly."""
+    from app.services.contact_flow import reset_contact_flow_to
+    await asyncio.to_thread(reset_contact_flow_to, req.session_id, req.to_state)
+    return {"ok": True}

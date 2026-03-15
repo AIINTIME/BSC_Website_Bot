@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, forwardRef, useImperativeHandle } from 'react'
 import styles from './InputBar.module.css'
 
 function PaperclipIcon() {
@@ -23,16 +23,30 @@ function SendIcon() {
   )
 }
 
-export default function InputBar({ onSend, disabled }) {
+const InputBar = forwardRef(function InputBar({ onSend, disabled }, ref) {
   const [value, setValue] = useState('')
-  const ref = useRef(null)
+  const textareaRef = useRef(null)
 
   const resize = () => {
-    const el = ref.current
+    const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
     el.style.height = Math.min(el.scrollHeight, 96) + 'px'
   }
+
+  // Expose fill(text) so parent can pre-populate the input for editing
+  useImperativeHandle(ref, () => ({
+    fill(text) {
+      setValue(text)
+      requestAnimationFrame(() => {
+        const el = textareaRef.current
+        if (!el) return
+        el.style.height = 'auto'
+        el.style.height = Math.min(el.scrollHeight, 96) + 'px'
+        el.focus()
+      })
+    }
+  }))
 
   const handleInput = (e) => {
     setValue(e.target.value)
@@ -51,7 +65,7 @@ export default function InputBar({ onSend, disabled }) {
     if (!text || disabled) return
     onSend(text)
     setValue('')
-    if (ref.current) ref.current.style.height = 'auto'
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
   }
 
   return (
@@ -64,7 +78,7 @@ export default function InputBar({ onSend, disabled }) {
 
         <div className={styles.inputWrap}>
           <textarea
-            ref={ref}
+            ref={textareaRef}
             className={styles.textarea}
             value={value}
             onChange={handleInput}
@@ -94,4 +108,6 @@ export default function InputBar({ onSend, disabled }) {
       </p>
     </>
   )
-}
+})
+
+export default InputBar

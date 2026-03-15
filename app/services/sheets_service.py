@@ -65,29 +65,69 @@ def _find_active_sheet(service, spreadsheet_id: str) -> str:
         n += 1
 
 
+def _find_session_row(service, spreadsheet_id: str, session_id: str) -> tuple[str, int] | None:
+    """Search all Contacts_N sheets for a row whose SessionID (col G) matches session_id.
+    Returns (sheet_name, 1-based row number) or None if not found.
+    """
+    spreadsheet = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    sheet_names = [
+        s["properties"]["title"]
+        for s in spreadsheet["sheets"]
+        if s["properties"]["title"].startswith("Contacts_")
+    ]
+    for sheet_name in sheet_names:
+        result = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=f"{sheet_name}!G:G",
+        ).execute()
+        for i, cell in enumerate(result.get("values", [])):
+            if cell and cell[0] == session_id:
+                return sheet_name, i + 1  # 1-based
+    return None
+
+
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
 def write_contact(name: str, email: str, mobile: str, address: str, session_id: str) -> str:
-    """Append one contact row. Returns the sheet name used."""
+    """Upsert one contact row — updates in place if session already exists, otherwise appends.
+    Returns the sheet name used.
+    """
     service = _get_service()
     spreadsheet_id = settings.GOOGLE_SPREADSHEET_ID
+
+    existing = _find_session_row(service, spreadsheet_id, session_id)
+
+    if existing:
+        sheet_name, row_num = existing
+        # Keep the original AuditID (col A), update cols B-G only
+        service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range=f"{sheet_name}!B{row_num}",
+            valueInputOption="RAW",
+            body={"values": [[
+                datetime.now(timezone.utc).isoformat(),
+                name,
+                email,
+                mobile,
+                address,
+                session_id or "",
+            ]]},
+        ).execute()
+        return sheet_name
+
     sheet_name = _find_active_sheet(service, spreadsheet_id)
-
-    row = [
-        str(uuid.uuid4()),
-        datetime.now(timezone.utc).isoformat(),
-        name,
-        email,
-        mobile,
-        address,
-        session_id or "",
-    ]
-
     service.spreadsheets().values().append(
         spreadsheetId=spreadsheet_id,
         range=f"{sheet_name}!A1",
         valueInputOption="RAW",
         insertDataOption="INSERT_ROWS",
-        body={"values": [row]},
+        body={"values": [[
+            str(uuid.uuid4()),
+            datetime.now(timezone.utc).isoformat(),
+            name,
+            email,
+            mobile,
+            address,
+            session_id or "",
+        ]]},
     ).execute()
-
     return sheet_name

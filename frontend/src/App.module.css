@@ -121,10 +121,10 @@
 .messages {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 14px 8px;
+  padding: 16px 16px 10px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
   scroll-behavior: smooth;
   overscroll-behavior: contain;
 }

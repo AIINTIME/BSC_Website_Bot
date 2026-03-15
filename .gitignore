@@ -38,4 +38,9 @@ bsc-website-bot-aaef9f495874.json
 
 # Frontend
 frontend/dist/
+frontend/node_modules/
 
+# Render
+render.yaml
+.python-version
+runtime.txt

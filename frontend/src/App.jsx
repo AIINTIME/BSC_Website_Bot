@@ -5,8 +5,7 @@ import TypingIndicator from './components/TypingIndicator'
 import InputBar from './components/InputBar'
 import styles from './App.module.css'
 
-// ── Session — fresh UUID per page load ────────────────────────────────────────
-const SESSION_ID = uuidv4()
+// ── Session ID lives in a ref so it can be regenerated on close ──────────────
 
 // ── SSE reader ────────────────────────────────────────────────────────────────
 async function* readSSE(response) {
@@ -106,8 +105,23 @@ export default function App() {
   const [unread,        setUnread]        = useState(0)
   const [welcomeGone,   setWelcomeGone]   = useState(false)
   const [welcomeExit,   setWelcomeExit]   = useState(false)
-  const bottomRef  = useRef(null)
-  const hasGreeted = useRef(false)
+  const bottomRef    = useRef(null)
+  const hasGreeted   = useRef(false)
+  const inputBarRef  = useRef(null)
+  const sessionIdRef = useRef(uuidv4())
+
+  // Close chat: reset everything and generate a new session
+  const closeChat = useCallback(() => {
+    sessionIdRef.current = uuidv4()
+    hasGreeted.current   = false
+    setMessages([])
+    setIsTyping(false)
+    setIsLocked(false)
+    setUnread(0)
+    setWelcomeGone(false)
+    setWelcomeExit(false)
+    setIsOpen(false)
+  }, [])
 
   // Dismiss welcome card with flip animation
   const dismissWelcome = useCallback(() => {
@@ -141,16 +155,43 @@ export default function App() {
     })
   }, [])
 
-  const finaliseMsg = useCallback((sources) => {
+  const finaliseMsg = useCallback((sources, quickReplies, contactStep) => {
     setMessages(prev => {
       const copy = [...prev]
       const last = copy[copy.length - 1]
       if (last?.role === 'ai' && last.streaming)
-        copy[copy.length - 1] = { ...last, streaming: false, sources: sources || [] }
+        copy[copy.length - 1] = { ...last, streaming: false, sources: sources || [], quickReplies: quickReplies || [] }
+      // Tag the preceding user message with its contact-flow step so edit can restore it
+      if (contactStep) {
+        const userIdx = copy.length - 2
+        if (userIdx >= 0 && copy[userIdx]?.role === 'user')
+          copy[userIdx] = { ...copy[userIdx], contactStep }
+      }
       return copy
     })
     if (!isOpen) setUnread(n => n + 1)
   }, [isOpen])
+
+  // Clear quick reply buttons from all messages (called when user sends a message)
+  const clearQuickReplies = useCallback(() => {
+    setMessages(prev => prev.map(m => m.quickReplies?.length ? { ...m, quickReplies: [] } : m))
+  }, [])
+
+  // Edit a user message: truncate from that index, reset backend state, pre-fill the input bar
+  const editMessage = useCallback((index) => {
+    if (isLocked) return
+    const msg = messages[index]
+    setMessages(prev => prev.slice(0, index))
+    // If this was a contact-form message, wind the backend back to that step
+    if (msg.contactStep) {
+      fetch('/api/chat/reset-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionIdRef.current, to_state: msg.contactStep }),
+      }).catch(() => {})
+    }
+    inputBarRef.current?.fill(msg.text)
+  }, [isLocked, messages])
 
   // ── Silent probe — fires on open, no user bubble shown ───────────────────
   const triggerWelcome = useCallback(async () => {
@@ -160,7 +201,7 @@ export default function App() {
       const res = await fetch('/api/chat/stream', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ message: '__init__', session_id: SESSION_ID }),
+        body:    JSON.stringify({ message: '__init__', session_id: sessionIdRef.current }),
       })
       if (!res.ok || !res.body) return
       setIsTyping(false)
@@ -168,7 +209,7 @@ export default function App() {
       for await (const event of readSSE(res)) {
         if (event.token)         appendToken(event.token)
         if (event.done === true) {
-          finaliseMsg(event.sources)
+          finaliseMsg(event.sources, event.quick_replies)
           if (event.contact_done) dismissWelcome()
         }
       }
@@ -182,6 +223,7 @@ export default function App() {
   const sendMessage = useCallback(async (text) => {
     if (!text.trim() || isLocked) return
 
+    clearQuickReplies()
     setMessages(prev => [...prev, { role: 'user', text }])
     setIsTyping(true)
     setIsLocked(true)
@@ -190,7 +232,7 @@ export default function App() {
       const res = await fetch('/api/chat/stream', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ message: text, session_id: SESSION_ID }),
+        body:    JSON.stringify({ message: text, session_id: sessionIdRef.current }),
       })
 
       if (!res.ok || !res.body) {
@@ -217,7 +259,7 @@ export default function App() {
         }
         if (event.token)         appendToken(event.token)
         if (event.done === true) {
-          finaliseMsg(event.sources)
+          finaliseMsg(event.sources, event.quick_replies, event.contact_state)
           if (event.contact_done) dismissWelcome()
         }
       }
@@ -234,7 +276,7 @@ export default function App() {
     } finally {
       setIsLocked(false)
     }
-  }, [isLocked, appendToken, finaliseMsg, dismissWelcome])
+  }, [isLocked, appendToken, finaliseMsg, dismissWelcome, clearQuickReplies])
 
   return (
     <>
@@ -267,7 +309,7 @@ export default function App() {
               <MinusIcon />
             </button>
             <button className={styles.iconBtn}
-              onClick={() => setIsOpen(false)}
+              onClick={closeChat}
               aria-label="Close chat" title="Close">
               <XIcon />
             </button>
@@ -278,13 +320,16 @@ export default function App() {
         <main className={styles.messages} aria-live="polite" aria-relevant="additions">
           {/* Welcome card: visible until contact form is done, then flips away */}
           {!welcomeGone && <WelcomeScreen onChip={sendMessage} exiting={welcomeExit} />}
-          {messages.map((msg, i) => <ChatMessage key={i} message={msg} />)}
+          {messages.map((msg, i) => (
+            <ChatMessage key={i} message={msg} onSend={sendMessage}
+              onEdit={() => editMessage(i)} isLocked={isLocked} />
+          ))}
           {isTyping && <TypingIndicator />}
           <div ref={bottomRef} />
         </main>
 
         {/* Input */}
-        <InputBar onSend={sendMessage} disabled={isLocked} />
+        <InputBar ref={inputBarRef} onSend={sendMessage} disabled={isLocked} />
       </div>
 
       {/* ── Launcher button ────────────────────────────────────────────────── */}

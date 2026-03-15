@@ -6,7 +6,7 @@ States:  name → email → mobile → address → confirm → done
 import json
 from app.services.memory_store_redis import redis_client
 from app.core.config import settings
-from app.services.contact_validator import validate_name, validate_email, validate_mobile
+from app.services.contact_validator import validate_name, validate_email, validate_mobile, validate_address
 from app.services.sheets_service import write_contact
 
 
@@ -52,21 +52,22 @@ def clear_contact_flow(session_id: str) -> None:
 
 # ── Flow entry point ──────────────────────────────────────────────────────────
 
-def start_contact_flow(session_id: str) -> str:
-    """Initialise the flow and return the first prompt."""
+def start_contact_flow(session_id: str) -> tuple[str, list[str]]:
+    """Initialise the flow and return the first prompt with quick reply options."""
     set_contact_state(session_id, "name")
     set_contact_data(session_id, {})
     return (
         "Welcome to **Bashundhara Sports City**! 🏆\n\n"
         "Before I assist you, may I take a few quick details?\n\n"
-        "What is your **full name**?"
+        "What is your **full name**?",
+        []
     )
 
 
 # ── Step handler ─────────────────────────────────────────────────────────────
 
-def handle_contact_step(session_id: str, user_input: str) -> str:
-    """Process one user reply in the contact flow. Returns the next bot message."""
+def handle_contact_step(session_id: str, user_input: str) -> tuple[str, list[str]]:
+    """Process one user reply in the contact flow. Returns (next bot message, quick reply options)."""
     state = get_contact_state(session_id)
     data = get_contact_data(session_id)
     text = user_input.strip()
@@ -77,48 +78,55 @@ def handle_contact_step(session_id: str, user_input: str) -> str:
         set_contact_state(session_id, "done")
         return (
             "No problem! I've skipped the details form.\n\n"
-            "How can I help you with Bashundhara Sports City today?"
+            "How can I help you with Bashundhara Sports City today?",
+            []
         )
 
     # ── Name (required) ───────────────────────────────────────────────────────
     if state == "name":
         if text.lower() == "skip":
-            return "Your name is required. Please enter your **full name**."
+            return "Your name is required. Please enter your **full name**.", []
         ok, val = validate_name(text)
         if not ok:
-            return val
+            return val, []
         data["name"] = val
         set_contact_data(session_id, data)
         set_contact_state(session_id, "email")
-        return f"Nice to meet you, **{val}**! 👋\n\nWhat is your **email address**?"
+        return f"Nice to meet you, **{val}**! 👋\n\nWhat is your **email address**?", []
 
     # ── Email (required) ──────────────────────────────────────────────────────
     if state == "email":
         if text.lower() == "skip":
-            return "Your email address is required. Please enter a valid email (e.g. name@example.com)."
+            return "Your email address is required. Please enter a valid email (e.g. name@example.com).", []
         ok, val = validate_email(text)
         if not ok:
-            return val
+            return val, []
         data["email"] = val
         set_contact_data(session_id, data)
         set_contact_state(session_id, "mobile")
-        return "Got it! What is your **mobile number**?"
+        return "Got it! What is your **mobile number**?", []
 
     # ── Mobile (required) ─────────────────────────────────────────────────────
     if state == "mobile":
         if text.lower() == "skip":
-            return "Your mobile number is required. Please enter a valid number (e.g. 01712345678)."
+            return "Your mobile number is required. Please enter a valid number (e.g. 01712345678).", []
         ok, val = validate_mobile(text)
         if not ok:
-            return val
+            return val, []
         data["mobile"] = val
         set_contact_data(session_id, data)
         set_contact_state(session_id, "address")
-        return "Almost done! What is your **address**?\n*(Type **skip** to leave this blank)*"
+        return "Almost done! What is your **address**?", ["Skip"]
 
     # ── Address ───────────────────────────────────────────────────────────────
     if state == "address":
-        data["address"] = "" if text.lower() == "skip" else text
+        if text.lower() != "skip":
+            ok, val = validate_address(text)
+            if not ok:
+                return val, ["Skip"]
+            data["address"] = val
+        else:
+            data["address"] = ""
         set_contact_data(session_id, data)
         set_contact_state(session_id, "confirm")
         addr_display = data["address"] if data["address"] else "*(not provided)*"
@@ -128,7 +136,8 @@ def handle_contact_step(session_id: str, user_input: str) -> str:
             f"• **Email:** {data['email']}\n"
             f"• **Mobile:** {data['mobile']}\n"
             f"• **Address:** {addr_display}\n\n"
-            "Type **yes** to confirm or **no** to start over."
+            "Is everything correct?",
+            ["Yes", "No"]
         )
 
     # ── Confirm ───────────────────────────────────────────────────────────────
@@ -147,13 +156,32 @@ def handle_contact_step(session_id: str, user_input: str) -> str:
             set_contact_state(session_id, "done")
             return (
                 f"Thank you, **{data.get('name', '')}**! Your details have been saved. ✅\n\n"
-                "Now, how can I help you with Bashundhara Sports City today?"
+                "Now, how can I help you with Bashundhara Sports City today?",
+                []
             )
         if text.lower() in ("no", "n", "restart", "redo"):
             set_contact_state(session_id, "name")
             set_contact_data(session_id, {})
-            return "No problem! Let's start over.\n\nWhat is your **full name**?"
-        return "Please type **yes** to confirm or **no** to start over."
+            return "No problem! Let's start over.\n\nWhat is your **full name**?", []
+        return "Please choose **Yes** to confirm or **No** to start over.", ["Yes", "No"]
 
     # Fallback (state == "done" or unexpected)
-    return "How can I help you with Bashundhara Sports City today?"
+    return "How can I help you with Bashundhara Sports City today?", []
+
+
+def reset_contact_flow_to(session_id: str, to_state: str) -> None:
+    """Reset the contact flow to a specific step, clearing collected data from that step onwards."""
+    state_order = ["name", "email", "mobile", "address", "confirm"]
+    field_order  = ["name", "email", "mobile", "address"]
+
+    if to_state not in state_order:
+        clear_contact_flow(session_id)
+        return
+
+    reset_idx = state_order.index(to_state)
+    data = get_contact_data(session_id)
+    for field in field_order[reset_idx:]:
+        data.pop(field, None)
+
+    set_contact_data(session_id, data)
+    set_contact_state(session_id, to_state)

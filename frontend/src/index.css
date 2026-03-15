@@ -62,20 +62,29 @@ html, body, #root {
 ::-webkit-scrollbar-thumb:hover { background: #9CA3AF; }
 
 /* ── Markdown inside AI bubbles (.md class wrapper) ─────────────────────── */
-.md p              { margin-bottom: 7px; }
-.md p:last-child   { margin-bottom: 0; }
-.md ul, .md ol     { padding-left: 18px; margin-bottom: 7px; }
-.md li             { margin-bottom: 3px; line-height: 1.55; }
-.md strong         { font-weight: 600; }
-.md em             { font-style: italic; }
-.md a              { color: var(--bsc-red); text-decoration: underline; word-break: break-all; }
-.md code           {
+.md p                      { margin-bottom: 8px; }
+.md p:last-child           { margin-bottom: 0; }
+.md ul, .md ol             { padding-left: 20px; margin-bottom: 8px; }
+.md ul                     { list-style-type: disc; }
+.md ol                     { list-style-type: decimal; }
+.md li                     { margin-bottom: 5px; line-height: 1.6; }
+.md li:last-child          { margin-bottom: 0; }
+.md ul ul, .md ol ol,
+.md ul ol, .md ol ul       { padding-left: 16px; margin-top: 4px; margin-bottom: 0; list-style-type: circle; }
+.md strong                 { font-weight: 600; color: var(--text); }
+.md em                     { font-style: italic; }
+.md a                      { color: var(--bsc-red); text-decoration: underline; word-break: break-all; }
+.md code                   {
   background: #F1F5F9;
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 12px;
   font-family: 'Menlo', 'Consolas', monospace;
 }
+.md h1, .md h2, .md h3     { font-weight: 700; margin-bottom: 6px; line-height: 1.3; }
+.md h1                     { font-size: 15px; }
+.md h2                     { font-size: 14px; }
+.md h3                     { font-size: 13px; }
 
 /* ── Message entrance animation ─────────────────────────────────────────── */
 @keyframes msgIn {

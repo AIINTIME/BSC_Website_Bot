@@ -43,3 +43,6 @@ frontend/dist/
 render.yaml
 .python-version
 runtime.txt
+
+# Docker (do NOT ignore — these are tracked)
+# Dockerfile.backend, Dockerfile.frontend, docker-compose.yml, nginx.conf are committed

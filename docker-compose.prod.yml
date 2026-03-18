@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  backend:
+    image: ${IMAGE_PREFIX}-backend:latest
+    container_name: bsc_backend
+    restart: unless-stopped
+    ports:
+      - "8016:8016"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    networks:
+      - bsc_network
+
+  frontend:
+    image: ${IMAGE_PREFIX}-frontend:latest
+    container_name: bsc_frontend
+    restart: unless-stopped
+    ports:
+      - "8015:80"
+    depends_on:
+      - backend
+    networks:
+      - bsc_network
+
+networks:
+  bsc_network:
+    driver: bridge

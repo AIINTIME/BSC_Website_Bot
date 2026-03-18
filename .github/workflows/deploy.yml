@@ -50,13 +50,13 @@ jobs:
           push: true
           tags: ${{ env.IMAGE_PREFIX }}-frontend:latest
 
-      # ── 6. Write .env from BACKEND_ENV_FILE secret ────────────────────────────
+      # ── 6. Write .env into workspace so SCP picks it up cleanly ───────────────
       - name: Write .env file
-        run: printf '%s' "$BACKEND_ENV_FILE" > /tmp/app.env
+        run: printf '%s' "$BACKEND_ENV_FILE" > app.env
         env:
           BACKEND_ENV_FILE: ${{ secrets.BACKEND_ENV_FILE }}
 
-      # ── 7. Copy files to VPS ──────────────────────────────────────────────────
+      # ── 7. Copy compose file + .env to VPS ────────────────────────────────────
       - name: Copy config files to VPS
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -64,11 +64,12 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
-          source: "docker-compose.prod.yml,/tmp/app.env"
+          source: "docker-compose.prod.yml,app.env"
           target: ${{ secrets.VPS_APP_DIR }}
+          strip_components: 0
 
-      # ── 8. SSH — install Docker, pull images, restart containers ──────────────
-      - name: Setup and deploy on VPS
+      # ── 8. SSH — pull images and restart containers ───────────────────────────
+      - name: Deploy on VPS
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -80,34 +81,25 @@ jobs:
             set -e
             APP_DIR="${{ secrets.VPS_APP_DIR }}"
 
-            # Install Docker if not present
-            if ! command -v docker &>/dev/null; then
-              echo "Installing Docker..."
-              curl -fsSL https://get.docker.com | sh
-              systemctl enable docker
-              systemctl start docker
-            fi
-
-            # Create app directory and data folder
             mkdir -p "$APP_DIR/data"
             cd "$APP_DIR"
 
-            # Move .env into place (scp puts files in a subdir)
-            mv tmp/app.env .env 2>/dev/null || mv app.env .env 2>/dev/null || true
+            # Rename app.env → .env
+            mv app.env .env
 
-            # Ensure ALLOWED_ORIGINS points to the frontend port
+            # Ensure ALLOWED_ORIGINS is set
             grep -q "ALLOWED_ORIGINS" .env || echo 'ALLOWED_ORIGINS=["http://138.252.200.244:8015"]' >> .env
 
             # Log in to GitHub Container Registry
             echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ secrets.GHCR_USERNAME }} --password-stdin
 
-            # Pull latest images and restart
-            IMAGE_PREFIX=$IMAGE_PREFIX docker compose -f docker-compose.prod.yml pull
-            IMAGE_PREFIX=$IMAGE_PREFIX docker compose -f docker-compose.prod.yml down || true
-            IMAGE_PREFIX=$IMAGE_PREFIX docker compose -f docker-compose.prod.yml up -d
+            # Pull latest images and restart (using docker-compose V1)
+            IMAGE_PREFIX=$IMAGE_PREFIX docker-compose -f docker-compose.prod.yml pull
+            IMAGE_PREFIX=$IMAGE_PREFIX docker-compose -f docker-compose.prod.yml down || true
+            IMAGE_PREFIX=$IMAGE_PREFIX docker-compose -f docker-compose.prod.yml up -d
 
-            # Cleanup
+            # Cleanup old images
             docker image prune -f
 
             echo "Deployment complete."
-            docker compose -f docker-compose.prod.yml ps
+            docker-compose -f docker-compose.prod.yml ps
